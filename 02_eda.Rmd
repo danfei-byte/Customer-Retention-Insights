@@ -1,0 +1,162 @@
+---
+title: "02_eda"
+output: html_document
+date: "2025-03-15"
+---
+## Loading required libraries and data
+```{r}
+library(tidyverse)
+#install.packages("reshape")
+library(reshape2)
+
+#change the file path to source code location
+setwd("C:/Users/Dell/Desktop/UMD/Spring 2025/BUMK 776 Action Learning Project/team8_source_code")
+data <- read.csv("data/data_processed.csv")
+```
+
+## Visualizing Satisfaction across Cohorts
+```{r}
+sat_summ <- data %>%
+  group_by(MODEL_SCORE) %>%
+  summarise(across(c(COVERRECSAT, DATASPEEDSAT, PRICEPLANSAT, BILLPYMTSAT, CUSTSERVSAT, 
+                     EASEMGMTSAT, FEATPERKSSAT, PHNUPGDSAT, PHN_TRADESAT, PHN_CREDITSAT, 
+                     PHN_FINSAT, PHN_DWNPYMTSAT), ~ mean(.x, na.rm = TRUE)))
+sat_summ <- subset(sat_summ, !is.na(MODEL_SCORE)) # remove the row where Model_score=NA
+
+freq_table <- data %>% # add frequency column
+  group_by(MODEL_SCORE) %>%
+  summarise(Freq = n())
+
+#join the frequency column to the original summary
+sat_summ <- left_join(sat_summ, freq_table, by = "MODEL_SCORE")
+# Find the frequency column (currently there are freq.y, freq.x, etc)
+freq_col <- grep("^Freq", colnames(sat_summ), value = TRUE)
+
+sat_summ <- sat_summ %>%
+  rename(Freq = all_of(freq_col)) %>%
+  select(MODEL_SCORE, Freq, COVERRECSAT, DATASPEEDSAT, PRICEPLANSAT, BILLPYMTSAT,
+         CUSTSERVSAT, EASEMGMTSAT, FEATPERKSSAT, PHNUPGDSAT,
+         PHN_TRADESAT, PHN_CREDITSAT, PHN_FINSAT, PHN_DWNPYMTSAT)
+
+#Melt the data and round the mean values to 2 decimal places
+sat_summ_heat <- melt(sat_summ[, -2],  
+                      id.vars = "MODEL_SCORE", 
+                      variable.name = "variable", 
+                      value.name = "average_score")
+
+#round the mean_value for visualization
+sat_summ_heat$average_score <- round(sat_summ_heat$average_score, 2)
+#convert model_score to factor to main order and labels
+sat_summ_heat$MODEL_SCORE <- factor(sat_summ_heat$MODEL_SCORE, levels = 1:14)
+
+ggplot(sat_summ_heat, aes(x = variable, y = MODEL_SCORE, fill = average_score)) +
+  geom_tile(color = "white") + # Add tile border for clarity
+  scale_fill_gradient(low = "white", high = "blue") +
+  geom_text(aes(label = average_score), color = "black", size = 3) + # Display values
+  theme_minimal() +
+  labs(title = "Satisfaction Scores by Cohort", 
+       x = "Satisfaction", 
+       y = "Cohort") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7)) + # Rotate x-axis labels
+  scale_y_discrete(breaks = 1:20) # Use discrete scale for MODEL_SCORE
+```
+* Cohorts 11, 12 and 13 seem to be consistently dissatisfied relative to other cohorts.
+
+* High satisfaction can be seen for Bill Payment, Customer Serivce and Ease of Management across cohorts.
+
+## Visualizing Likelihood to Continue across Cohorts
+```{r}
+boxplot(LTC ~ MODEL_SCORE, data=data)
+
+data$lyl_diff <- data$LTC - data$LTR
+lyl_summ <- data %>%
+  group_by(MODEL_SCORE) %>%
+  summarise(across(c(LTC, LTR, lyl_diff), ~ mean(.x, na.rm = TRUE)))
+lyl_summ <- subset(lyl_summ, !is.na(MODEL_SCORE))
+
+lyl_summ <- left_join(lyl_summ, freq_table, by = "MODEL_SCORE")
+freq_col <- grep("^Freq", colnames(lyl_summ), value = TRUE)
+
+lyl_summ <- lyl_summ %>%
+  rename(Freq = all_of(freq_col)) %>%
+  select(MODEL_SCORE, Freq, LTC, LTR, lyl_diff)
+
+lyl_summ_heat <- melt(lyl_summ[, -c(2,5)],
+                      id.vars = "MODEL_SCORE", 
+                      variable.name = "variable", 
+                      value.name = "likelihood")
+
+lyl_summ_heat$likelihood <- round(lyl_summ_heat$likelihood, 2) # Round the mean_value for visualization
+lyl_summ_heat$MODEL_SCORE <- factor(lyl_summ_heat$MODEL_SCORE, levels = 1:14) #convert model_score to factor to main order and labels
+
+ggplot(lyl_summ_heat, aes(x = variable, y = MODEL_SCORE, fill = likelihood)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "white", high = "maroon") +
+  geom_text(aes(label = likelihood), color = "black", size = 3) +
+  theme_minimal() +
+  labs(title = "Likelihood by Cohort", 
+       x = "Likelihood", 
+       y = "Cohort") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 7)) +
+  scale_y_discrete(breaks = 1:20)
+```
+* Cohorts 14 and 6 have the highest likelihoods to continue service.
+
+* Low likelihoods can be observed particularly for cohorts 12 and 11.
+
+* Patterns in LTR and LTC seem to be similar across cohorts.
+
+## Potential variables impacting LTC
+
+### Number of Lines
+```{r}
+data$NUMBER_OF_LINES[data$NUMBER_OF_LINES>=7] <- 7 #this is 7 or more
+cor(as.numeric(data$NUMBER_OF_LINES), data$LTC, use = "complete.obs")
+data %>%
+  group_by(MODEL_SCORE) %>%
+  summarise(across(c(NUMBER_OF_LINES,LTC), ~ mean(.x, na.rm = TRUE)))
+```
+The correlation coefficient shows that more number of lines are not necessarily associated with a higher likelihood to continue.
+
+### Account Tenure
+```{r}
+cor(data$ACCOUNT_TENURE_DAYS, data$LTC, use = "complete.obs")
+data %>%
+  group_by(MODEL_SCORE) %>%
+  summarise(across(c(ACCOUNT_TENURE_DAYS,LTC), ~ mean(.x, na.rm = TRUE)))
+```
+The correlation coefficient indicates that longer tenure may be associated with a higher likelihood to continue.
+
+### Word-of-Mouth Sentiment
+```{r}
+round(prop.table(table(data$MODEL_SCORE, data$WOM_SENTIMENT), margin=1),3)
+
+ggplot(data, aes(x = as.factor(WOM_SENTIMENT), y = LTC)) +
+  geom_boxplot(fill = "lightblue") +
+  stat_summary(fun = mean, geom = "point", size = 2, color = "red")
+
+data %>%
+  group_by(WOM_SENTIMENT) %>%
+  summarise(across(LTC, ~ mean(.x, na.rm = TRUE)))
+```
+Cohorts 11, 12 and 13, who have relatively low LTC scores, show a relatively high proportion of negative WOM sentiments. Negative WOM also translates into significantly lower LTC compared to positive WOM.
+
+### Having an issue recently
+```{r}
+round(prop.table(table(data$MODEL_SCORE, data$ISS_RECENTISSUE), margin=1),3)
+```
+The proportion of customers who have had an issue recently is much higher in cohorts that also see a low LTR and a low LTC (cohorts 11, 12 and 13).
+
+### Propensity to Call Care
+```{r}
+round(prop.table(table(data$MODEL_SCORE, data$HIGH_PROP_TO_CALL_CARE), margin=1),3)
+```
+The proportion of customers with a high propensity to call care is significantly larger in cohort 12. It is also relatively high in cohorts 7 and 10.
+
+### Primary Reason to Join
+```{r}
+ggplot(data, aes(x = as.factor(JOI_PRIMARYREASONAP), y = LTC)) +
+  geom_boxplot(fill = "lightblue") +
+  stat_summary(fun = mean, geom = "point", size = 2, color = "red")
+```
+While a pattern in the reason for joining and LTC is not very clear, we can see that customers who joined for reasons 8, 9 and 10 seem to have significantly lower LTC scores than other customers.

@@ -1,0 +1,77 @@
+---
+title: "03_model"
+output: html_document
+date: "2025-03-14"
+---
+
+## Loading data
+```{r}
+#change the file path to source code location
+setwd("C:/Users/Dell/Desktop/UMD/Spring 2025/BUMK 776 Action Learning Project/team8_source_code")
+data <- read.csv("data/data_processed.csv")
+
+#choosing a subset of variables based on EDA
+data <- data[,c('id','LTC','WOM_SENTIMENT','GENDER','MARITALSATUS',
+                'KIDSINHH','ETHNICITY','MILITARYSTAT','ACCOUNT_TENURE_DAYS',
+                'ACTIVATION_MILESTONE_GROUP_NEW','HIGH_PROP_TO_CALL_CARE','AGE',
+                'JOI_PRIMARYREASONAP','NUMBER_OF_LINES','REMAINING_PAYMENTS',
+                'MONTHLY_SUBSCRIPTION_COST')]
+```
+
+## Converting variables to appropriate formats
+```{r}
+cat_vars <- c('WOM_SENTIMENT','GENDER','MARITALSATUS','KIDSINHH','ETHNICITY',
+              'MILITARYSTAT','ACTIVATION_MILESTONE_GROUP_NEW','AGE')
+
+data[cat_vars] <- lapply(data[cat_vars], as.factor)
+data$HIGH_PROP_TO_CALL_CARE <- factor(data$HIGH_PROP_TO_CALL_CARE, levels=c("N", "Y"))
+data$WOM_SENTIMENT <- relevel(data$WOM_SENTIMENT, ref="Mostly positive")
+data$JOI_PRIMARYREASONAP <- as.factor(data$JOI_PRIMARYREASONAP)
+```
+
+##Model 1
+```{r}
+model1 <- lm(LTC ~ GENDER + MARITALSATUS + KIDSINHH + ETHNICITY + MILITARYSTAT
+             + HIGH_PROP_TO_CALL_CARE + AGE + NUMBER_OF_LINES
+             + ACCOUNT_TENURE_DAYS + REMAINING_PAYMENTS
+             + MONTHLY_SUBSCRIPTION_COST, data = data)
+summary(model1)
+```
+
+##Model 2
+```{r}
+model2 <- lm(LTC ~ GENDER + KIDSINHH + MILITARYSTAT + HIGH_PROP_TO_CALL_CARE
+             + AGE + NUMBER_OF_LINES + ACCOUNT_TENURE_DAYS + REMAINING_PAYMENTS
+             + MONTHLY_SUBSCRIPTION_COST, data = data)
+summary(model2)
+```
+
+##Model 3
+```{r}
+model3 <- lm(LTC ~ GENDER + KIDSINHH + MILITARYSTAT + HIGH_PROP_TO_CALL_CARE
+             + AGE + NUMBER_OF_LINES + ACCOUNT_TENURE_DAYS + REMAINING_PAYMENTS
+             + MONTHLY_SUBSCRIPTION_COST + JOI_PRIMARYREASONAP, data = data)
+summary(model3)
+```
+
+##Final Model
+```{r}
+final_model <- lm(LTC ~ AGE + HIGH_PROP_TO_CALL_CARE + MONTHLY_SUBSCRIPTION_COST
+                  + MILITARYSTAT + ACCOUNT_TENURE_DAYS + JOI_PRIMARYREASONAP
+                  + WOM_SENTIMENT, data = data)
+summary(final_model)
+```
+
+## Summary
+We iteratively refined our model by testing different variable combinations removing less significant predictors, and introducing key explanatory factors to enhance predictive power.
+
+The final model retains only the most impactful variables, achieving a significantly improved fit with an adjusted R-squared of 0.6387.
+
+## Proportion of Word-Of-Mouth Sentiments across cohorts
+```{r}
+data$sentiment <- as.character(data$WOM_SENTIMENT)
+data$sentiment[!is.na(data$sentiment) & (data$sentiment=="Mostly positive" | data$sentiment=="All positive")] <- "Positive"
+data$sentiment[!is.na(data$sentiment) & (data$sentiment=="Mostly negative" | data$sentiment=="All negative")] <- "Negative"
+
+prop.table(table(data$sentiment, data$MODEL_SCORE), margin=2)
+```

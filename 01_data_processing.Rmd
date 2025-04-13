@@ -1,0 +1,164 @@
+---
+title: "01_data_processing"
+output: html_document
+date: "2025-03-14"
+---
+
+## Installing required packages and libraries
+```{r}
+library(dplyr) #for glimpse()
+#install.packages("skimr")
+library(skimr) # for skim()
+```
+
+## Loading data
+```{r}
+#change the file path to source code location
+setwd("/Users/dynamite/Desktop/MSMA/Action Learning Project/Deliverables/team8_source_code")
+data_raw <- read.csv("data/data_raw.csv", na=c(""," ",".","NULL"))
+
+anyDuplicated(data_raw) #no duplicates
+glimpse(data_raw)
+
+#creating a copy of the dataset
+d1 <- data_raw
+#adding a unique identifier for consistency and replicability
+d1 <- mutate(d1, id = row_number())
+```
+
+## Converting variables to appropriate formats
+
+The original data identified all variables as either `chr` or `int`. Variables concerning dates, text/string variables, binary and categorical variables must be converted to appropriate variable types before further analysis.
+
+### Date-Time variable formatting
+```{r}
+#dates
+date_vars <- c('STRTDT','ENDDT','ACCOUNT_ESTABLISHED_DATE','BEGIN_SERVICE_DATE','ACCT_MGRTN_DTTM_FORMATTED','ACCOUNT_ESTABLISHED_DATE_WITH_MIGRATION','INVITEDT','LAST_HANDSET_UPGRADE_DT','HANDSET_START_DT')
+d1[date_vars] <- lapply(d1[date_vars], as.Date, tryFormats=c("%m-%d-%Y","%m/%d/%Y","%d-%b-%y","%b-%d-%y"))
+```
+
+### Numerical variables
+```{r}
+num_vars <- c('PHN_TRADESAT','PHN_CREDITSAT','PHN_FINSAT','PHN_DWNPYMTSAT','DIS_COST','DIS_DEVICECOST','DIS_DEVICEAVAIL','DIS_PERKS','DIS_NTWK','NUMBER_OF_LINES',
+              'EIP_DEVICE_BALANCE','MONTHLY_PAYMENT_1','REMAINING_PAYMENTS','MONTHLY_SUBSCRIPTION_COST','LASTBILL_CREDIT_AMT')
+d1[num_vars] <- lapply(d1[num_vars], as.numeric)
+```
+
+### Binary variables
+```{r}
+bin_vars <- c('CAMPAIGNID','DEVICE','DISTRIBUTIONCHANNEL','USERLANGUAGE','LONGSRVY','DIS_TRAVELVSNONE','Q_CHL','SURVEY_TYPE','SURVEY_DELIVERY_METHOD','PAPERLESS_BILL_IND','Q_LANGUAGE','COMPTYPE','TEST_TYPE_FLAG','SMRA_MARKET_TYPE','NET_SURVEY_TYPE')
+d1[bin_vars] <- lapply(d1[bin_vars], as.factor)
+
+prk_aware_vars <- c('PRK_Perk1AWARE','PRK_Perk2AWARE','PRK_Perk3AWARE','PRK_Perk4AWARE','PRK_Perk5AWARE','PRK_Perk6AWARE','PRK_Perk7AWARE','PRK_Perk8AWARE','PRK_Perk9AWARE','PRK_Perk11AWARE','PRK_Perk12AWARE','PRK_Perk13AWARE','PRK_Perk14AWARE','PRK_PRICELOCKAWARE')
+d1[prk_aware_vars] <- lapply(d1[prk_aware_vars], factor, levels = c("Not aware", "Aware"))
+
+prk_use_vars <- c('PRK_Perk1USE','PRK_Perk2USE','PRK_Perk3USE','PRK_Perk4USE','PRK_Perk5USE','PRK_Perk6USE','PRK_Perk7USE','PRK_Perk8USE','PRK_Perk9LUSE','PRK_Perk12USE')
+d1[prk_use_vars] <- lapply(d1[prk_use_vars], factor, levels = c("Have not used","Have used"))
+colnames(d1)[54] <- 'PRK_Perk9USE'
+
+no_yes_vars <- c('ISS_RECENTISSUE','PHN_PURCHIND','PHN_FININD','PHN_TRADEIND','WOM_SHARE','EIP_BALANCE_MARKER')
+d1[no_yes_vars] <- lapply(d1[no_yes_vars], factor, levels = c("No", "Yes"))
+
+ny_vars <- c('PRIMARY_DECISION_MAKER_IND','PRIMARY_SCB_IND','EASY_PAY_IND','HIGH_PROP_TO_CALL_CARE','PHP_IND')
+d1[ny_vars] <- lapply(d1[ny_vars], factor, levels = c("N","Y"))
+```
+
+### Categorical variables
+```{r}
+d1$MILITARYSTAT[d1$MILITARYSTAT=="Active "] <- "Active"
+d1$LANGUAGE_IDENTIFIER[d1$LANGUAGE_IDENTIFIER %in% c("EN","en","ENG")] <- "EN"
+d1$LANGUAGE_IDENTIFIER[d1$LANGUAGE_IDENTIFIER %in% c("es","SP")] <- "ES"
+
+cat_vars <- c('WOM_SENTIMENT','WOM_SWITCHING','MILITARYSTAT','DIS_NTWKQUALITY','DIS_PLANPRICE','DIS_TRAVELTYPE','DIS_GROUP','LANGUAGE_IDENTIFIER','MGRTN_IND','JOI_PRIMARYREASONAP','DIS_STAY_JOIN_FACTOR','ACTIVATION_MILESTONE_GROUP_NEW','DEVICE_TECHNOLOGY','CREDIT_CLASS_CATEGORY','GEOCLASS_COLLAPSED', 'AGE')
+d1[cat_vars] <- lapply(d1[cat_vars], as.factor)
+
+#categorical variables with 'Prefer not to answer' option
+cat_vars_pnta <- c('GENDER','MARITALSATUS','KIDSINHH','BANCOMPCON','MILITARY','ETHNICITY')
+d1[cat_vars_pnta] <- lapply(d1[cat_vars_pnta], function(x) {
+  x[x == "Prefer not to answer"] <- NA  # Replace with NA
+  factor(x)})  # Convert to factor
+
+#location-related variables
+loc_vars <- c('BILL_STATE','ZIP_CODE','STATE','CITY','EXPERIENCE_AREA','DMA_NAME')
+d1[loc_vars] <- lapply(d1[loc_vars], as.factor)
+
+#other categorical variables
+cat_vars_other <- c('CURRINTERNET','DEVICE_BRAND','GEOCLASS','ACQUISITION_CHANNEL','CREDIT_CLASS_CODE','MARKET_CODE','DEVICE_MAKE_SAS','DEVICE_MODEL_SAS')
+d1[cat_vars_other] <- lapply(d1[cat_vars_other], as.factor)
+```
+
+### Check-box-type variables
+```{r}
+check_box_vars <- c('ISS_CATEGORY','TRAVELCLASS')
+d1[check_box_vars] <- lapply(d1[check_box_vars], function(x) strsplit(as.character(x), ","))
+```
+
+#### `TRAVELCLASS`
+* 0-None of these
+* 1-I am not travelling much now but intend to in the future
+* 2-I regularly talk to people who live outside of the U.S.
+* 3-I regularly travel by car/train/bus domestically
+* 4-I regularly fly domestically
+* 5-I regularly travel internationally
+
+```{r}
+travelclass_cat <- c("None of these","I am not travelling much now but intend to in the future","I regularly talk to people who live outside of the U.S.","I regularly travel by car/train/bus domestically","I regularly fly domestically","I regularly travel internationally")
+d1[travelclass_cat] <- lapply(travelclass_cat, function(cat) {
+  col_values <- sapply(d1$TRAVELCLASS, function(x) ifelse(cat %in% x, 1, 0))
+  col_values[is.na(d1$TRAVELCLASS)] <- NA
+  col_values})
+colnames(d1)[140:145] <- c('TRAVELCLASS_0','TRAVELCLASS_1','TRAVELCLASS_2','TRAVELCLASS_3','TRAVELCLASS_4','TRAVELCLASS_5')
+```
+
+#### `ISS_CATEGORY`
+* 0-Another issue not listed here
+* 1-Your phone
+* 2-A device or plan promotion
+* 3-Coverage & reception
+* 4-Plan features & perks
+* 5-Billing
+* 6-Changes to your account
+* 7-Customer service
+* 8-Data speeds
+
+```{r}
+d1$ISS_CATEGORY[d1$ISS_CATEGORY=="Data speeds "] <- "Data speeds"
+
+iss_category_cat <- c("Another issue not listed here","Your phone","A device or plan promotion","Coverage & reception","Plan features & perks","Billing","Changes to your account","Customer service","Data speeds")
+d1[iss_category_cat] <- lapply(iss_category_cat, function(cat) {
+  col_values <- sapply(d1$ISS_CATEGORY, function(x) ifelse(cat %in% x, 1, 0))
+  col_values[is.na(d1$ISS_CATEGORY)] <- NA
+  col_values})
+colnames(d1)[146:154] <- c('ISS_CATEGORY_0','ISS_CATEGORY_1','ISS_CATEGORY_2','ISS_CATEGORY_3','ISS_CATEGORY_4','ISS_CATEGORY_5','ISS_CATEGORY_6','ISS_CATEGORY_7','ISS_CATEGORY_8')
+```
+
+## Previewing data
+```{r}
+glimpse(d1)
+skim(d1)
+```
+
+We see that the following variables consists of only NA values:
+* `PRK_5GAWARE`, `PRK_MS360AWARE`, `PRK_FACEBOOKAWARE`, `PRK_Perk10AWARE`, `PRK_FACEBOOKUSE`, `PRK_Perk10USE`, `NET_5GCARE`
+
+The following variables contain the same value across all observations:
+* `CUSTOMER_TYPE` ("Consumer"), `SUBSCRIBER_STATUS` ("A"), `DIS_FLAG` (value = 1, std. dev. = 0)
+
+The following variables were modified by creating corresponding dummy variables:
+* `TRAVELCLASS` and `ISS_CATEGORY`
+
+Since these variables are not providing any unique information across observations, these can be omitted from the analysis.
+
+```{r}
+d2 <- d1[,-c(24,46,47,51,52,55,56,79,108,66,65,35)]
+skim(d2)
+```
+
+## Saving the progress so far
+
+Converting the date-type variables back as characters to ensure consistency of format across devices.
+
+```{r}
+d2[date_vars] <- lapply(d2[date_vars], as.character)
+write.csv(d2, "./data/data_processed.csv", row.names = FALSE)
+```
